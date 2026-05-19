@@ -1,5 +1,6 @@
 import discord
 import os
+import random
 from dotenv import load_dotenv
 from ai_handler import ask_ai, clear_history
 
@@ -13,6 +14,9 @@ client = discord.Client(intents=intents)
 
 # How many recent raw channel messages to scoop up as passive context
 PASSIVE_CONTEXT_LIMIT = 10
+
+# conversation variables
+ping_random_reply_list: list[str] = ["ჰოუ", "რაა", "რაია", "რაო", "ხო რაარი", "რახდება"]
 
 # ── Helper: gather passive channel context ────────────────────────────────────
 async def get_passive_context(channel, triggering_message_id: int) -> str:
@@ -37,7 +41,7 @@ async def get_passive_context(channel, triggering_message_id: int) -> str:
 # ── Events ────────────────────────────────────────────────────────────────────
 @client.event
 async def on_ready():
-    print(f"✅ Logged in as {client.user} (ID: {client.user.id})")
+    print(f"Logged in as {client.user} (ID: {client.user.id})")
     print("Bot is ready.")
 
 
@@ -55,7 +59,7 @@ async def on_message(message: discord.Message):
         user_input = content[len("$ჩატ"):].strip()
 
         if not user_input:
-            await message.reply("რა გინდა ძმა? რა ვერ დალაგდი? ა ესე დაწერე აგე -> $ჩატ \"მესიჯი\"")
+            await message.reply("რა გინდა ძმა? რა ვერ დალაგდი? ა ესე დაწერე -> $ჩატ \"<მესიჯი>\"")
             return
 
         # Show typing indicator while we wait for the AI
@@ -66,7 +70,7 @@ async def on_message(message: discord.Message):
                 username=message.author.display_name,
                 user_message=user_input,
                 passive_context=passive_ctx if passive_ctx else None,
-            )
+            ) # ai_handler method
 
         await message.reply(reply)
         return
@@ -74,14 +78,14 @@ async def on_message(message: discord.Message):
     # ── $reset ────────────────────────────────────────────────────────────────
     # Clears the AI conversation history for this channel
     if content == "$reset":
-        clear_history(message.channel.id)
-        await message.reply("🧹 Conversation history cleared for this channel. Fresh start!")
+        clear_history(message.channel.id) # ai_handler method
+        await message.reply("Conversation history cleared for this channel.")
         return
 
     # ── $hello ────────────────────────────────────────────────────────────────
     # Simple ping to confirm the bot is alive
     if content == "$hello":
-        await message.reply(f"ჰოუ? {message.author.display_name}! აქ ვარ რაო?")
+        await message.reply(f"{random.choice(ping_random_reply_list)}?")
         return
 
     # ── $help ─────────────────────────────────────────────────────────────────
@@ -98,6 +102,5 @@ async def on_message(message: discord.Message):
         return
 
 
-# ── Run ───────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     client.run(TOKEN)
