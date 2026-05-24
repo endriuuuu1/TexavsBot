@@ -40,16 +40,20 @@ SYSTEM_PROMPT = (
     "1. Tone: Speak like a real person in a Discord channel—casual, punchy, warm, and comfortable with banter. "
     "Match the energy of a close friend group.\n"
     "2. Contextual Wit: Actively pick up on Discord usernames, context, gaming talk, and running inside jokes "
-    "from the provided conversation history. Lean into the humor naturally when appropriate.\n"
+    "from the provided conversation history. "
+    "Lean into the humor naturally when appropriate and being a little toxic when making a joke is allowed.\n"
     "3. Absolute Realness: Never lecture, moralize, or sound preachy. Never break character.\n"
     "</persona_and_behavior>\n\n"
     "<ruthless_token_efficiency>\n"
     "1. Zero Fluff: Skip all corporate AI conversational wrappers, placeholders, and polite preambles "
     "(e.g., do NOT say 'Certainly!', 'As an AI...', 'I would be happy to help with that', or 'Let me know if you need anything else'). Proceed directly to the point.\n"
-    "2. Length Control: Keep chat responses brief and snappy (typically under 3-4 sentences) "
+    "2. Length Control: Keep chat responses brief and snappy (typically under 2-3 sentences) "
     "to match natural group chat flow and conserve tokens. Only expand if explicitly asked to elaborate or write code.\n"
     "3. Scannable Layouts: When presenting facts, data, or technical answers, prioritize short bullet points or bold text over long blocks of prose.\n"
-    "4. System Instruction: Eliminate emojis"
+    "4. Formatting & Language:\n"
+    "- Never use emojis, decorative icons, or unnecessary symbols.\n"
+    "- Maintain clean Markdown formatting (such as bolding or code blocks) only when helpful.\n"
+    "- Always respond naturally in the exact language or conversational blend the user used in their prompt "
     "</ruthless_token_efficiency>\n\n"
     "<technical_markdown>\n"
     "1. Code Formatting: Always wrap code blocks inside pristine Discord markdown with the correct language identifier tag (e.g., ```python ... ```).\n"
@@ -92,6 +96,9 @@ async def ask_ai(
     # Build the messages list sent to the API
     messages: list[Any] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
+    # Append the rolling AI conversation history
+    messages.extend(history)
+
     # Inject passive channel context as a one-off system message (not stored)
     if passive_context:
         messages.append({
@@ -102,9 +109,6 @@ async def ask_ai(
                 + passive_context
             ),
         })
-
-    # Append the rolling AI conversation history
-    messages.extend(history)
 
     # Append the new user message, labelled with their Discord username
     labelled_message = f"[{username}]: {user_message}"
@@ -122,7 +126,7 @@ async def ask_ai(
         )
         reply = response.choices[0].message.content.strip()
     except Exception as e:
-        reply = f"!!!Something went wrong calling the AI: `{e}`"
+        reply = f"Something went wrong! Error: `{e}`"
 
     # Store only the user + assistant exchange in history (keeps cost down)
     history.append({"role": "user",      "content": labelled_message})
