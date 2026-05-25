@@ -11,8 +11,10 @@ from handlers.pip_handler import (
 )
 from discord.ext import commands
 from dotenv import load_dotenv
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 import discord
+import json
 import random
 import os
 
@@ -140,6 +142,9 @@ analyzer = TextAnalyzer()
 
 # conversation variables:
 PASSIVE_CONTEXT_LIMIT = 10
+AI_LIMIT_MAX_REQUESTS = 7
+AI_LIMIT_WINDOW = timedelta(hours=2)
+AI_LIMIT_FILE = Path(__file__).resolve().parent / "data" / "ai_usage_limits.json"
 megonkalo_trigger_list: list[str] = ['megonka', 'megonkalo', 'gonka', 'gonkalo','megonkaloze','megonkaze','megonkalos',
                           'მეგონკა', 'მეგონკალო', 'გონკა', 'გონკალო', 'მეგონკალოზე', 'მეგონკაზე', 'მეგონკალოს']
 megonkalo_random_reply_list: list[str] = ["94", "94ით მოფრინავს", "ჩვენი ძმა მეგონკა", "გიო wowი არ ვიყომაროთ?",
@@ -274,11 +279,115 @@ def _get_voice_players(ctx) -> list[str] | str:
     names = ", ".join(m.display_name for m in members)
     return f"wrong_count:{len(members)}:{names}"
 
+
+def _load_ai_usage_limits() -> dict[str, dict[str, object]]:
+    if not AI_LIMIT_FILE.exists():
+        return {}
+
+    try:
+        with AI_LIMIT_FILE.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    return {
+        user_id: entry
+        for user_id, entry in data.items()
+        if isinstance(user_id, str) and isinstance(entry, dict)
+    }
+
+
+def _save_ai_usage_limits(limits: dict[str, dict[str, object]]) -> None:
+    AI_LIMIT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with AI_LIMIT_FILE.open("w", encoding="utf-8") as file:
+        json.dump(limits, file, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def _format_cooldown(remaining: timedelta) -> str:
+    total_seconds = max(int(remaining.total_seconds()), 0)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes = (remainder + 59) // 60
+
+    if hours and minutes:
+        return f"{hours}h {minutes}m"
+    if hours:
+        return f"{hours}h"
+    return f"{max(minutes, 1)}m"
+
+
+def _consume_ai_request(user_id: int) -> tuple[bool, str | None]:
+    limits = _load_ai_usage_limits()
+    now = datetime.now(timezone.utc)
+    key = str(user_id)
+    entry = limits.get(key)
+
+    if entry is not None:
+        try:
+            window_start = datetime.fromisoformat(str(entry["window_start"]))
+            count_value = entry.get("count", 0)
+            count = int(count_value) if isinstance(count_value, (int, str)) else 0
+        except (KeyError, TypeError, ValueError):
+            window_start = now
+            count = 0
+    else:
+        window_start = now
+        count = 0
+
+    if now - window_start >= AI_LIMIT_WINDOW:
+        window_start = now
+        count = 0
+
+    if count >= AI_LIMIT_MAX_REQUESTS:
+        cooldown = _format_cooldown(AI_LIMIT_WINDOW - (now - window_start))
+        return False, cooldown
+
+    limits[key] = {
+        "window_start": window_start.isoformat(),
+        "count": count + 1,
+    }
+    _save_ai_usage_limits(limits)
+    return True, None
+
+
+def _get_welcome_channel(guild: discord.Guild) -> discord.TextChannel | None:
+    bot_member = guild.me
+    if bot_member is None:
+        return None
+
+    system_channel = guild.system_channel
+    if system_channel and system_channel.permissions_for(bot_member).send_messages:
+        return system_channel
+
+    for channel in guild.text_channels:
+        if channel.permissions_for(bot_member).send_messages:
+            return channel
+
+    return None
+
+
 # check bot state by pinging (online/offline)
 @bot.event
 async def on_ready():
     print(f"We have logged in as {bot.user}")
     print(f'Bot Ready!')
+
+
+@bot.event
+async def on_guild_join(guild):
+    channel = _get_welcome_channel(guild)
+    if channel is None:
+        return
+
+    await channel.send(
+        "@everyone სალამი სასტავ, მე ვარ ჩაჭიპიტი.\n"
+        "ჩემი prefix არის `$`.\n"
+        "ჯერ `$help`, რო ნახოთ რა command-ები მაქ.",
+        allowed_mentions=discord.AllowedMentions(everyone=True),
+    )
+
 
 @bot.command()
 async def ping(ctx):
@@ -297,6 +406,14 @@ async def chat(ctx):
 
     if not argument:
         await ctx.reply("რა გინდა ძმა? რა ვერ დალაგდი? აი ესე უნდა -> `$chat ან $ჩატ <მესიჯი>`",mention_author=False)
+        return
+
+    is_allowed, cooldown = _consume_ai_request(ctx.author.id)
+    if not is_allowed:
+        await ctx.reply(
+            f"თუ არ გინდა რო ავფეთქდე, ცადე {cooldown}-ში.",
+            mention_author=False,
+        )
         return
 
     async with ctx.channel.typing():

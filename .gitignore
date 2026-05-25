@@ -5,3 +5,5 @@ __pycache__/
 AGENTS.md
 context.md
 data/pip_packages.json
+data/ai_usage_limits.json
+demo.py
