@@ -21,7 +21,6 @@ import os
 # env variables
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-#MY_GUILD = discord.Object(id=os.getenv('MY_GUILD_ID'))
 
 # Bot instance setup
 intents = discord.Intents.default()
