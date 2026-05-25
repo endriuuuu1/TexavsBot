@@ -1,9 +1,17 @@
-from dotenv import load_dotenv
 from handlers.ai_handler import ask_ai, clear_history
 from handlers.stock_handler import fetch_and_render, resolve_ticker, PERIOD_MAP, DEFAULT_PERIOD
 from handlers.lol_handler import roll_arena, roll_champs, roll_roles, roll_mix, ROLE_LABELS
 from handlers.language_handler import TextAnalyzer
+from handlers.pip_handler import (
+    build_package_list_embed,
+    install_package,
+    uninstall_package,
+    is_numpy_package,
+    random_numpy_reply,
+)
 from discord.ext import commands
+from dotenv import load_dotenv
+from datetime import timedelta
 import discord
 import random
 import os
@@ -16,12 +24,24 @@ MY_GUILD = discord.Object(id=os.getenv('MY_GUILD_ID'))
 # Bot instance setup
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix='$', intents=intents)
+bot = commands.Bot(command_prefix='$', intents=intents, help_command=None)
 analyzer = TextAnalyzer()
 
 # conversation variables:
 PASSIVE_CONTEXT_LIMIT = 10
-
+megonkalo_trigger_list = ['megonka', 'megonkalo', 'gonka', 'gonkalo','megonkaloze','megonkaze','megonkalos',
+                          'მეგონკა', 'მეგონკალო', 'გონკა', 'გონკალო', 'მეგონკალოზე', 'მეგონკაზე', 'მეგონკალოს']
+megonkalo_random_reply_list = ["94", "94ით მოფრინავს", "ჩვენი ძმა მეგონკა", "გიო wowი არ ვიყომაროთ?",
+                               "ეგ ვისი ძმაკაცია?", "დაურეკეთ მეგონკას ჩვენ ძმას", "94ჯერ ვითამაშე wow დღეს", "ბანჯოლას ძმაკაცი ვინახსენა?"]
+ping_random_reply_list: list[str] = ["ჰოუ", "რაა", "რაია",
+                                    "რაო", "ხო რაარი", "რახდება",
+                                     "ჰოოოო", "რაგინდაააა რააა"]
+stock_not_found_list = ['ეგეთი მონაცემები ვერსად ვერ ვნახე', 'ეგ რაარი? არსად არაა',
+                      'ვინა, სადა?', 'ვიის?', 'არ მაქ მაგის მონაცემები']
+missing_permission_reply_list = ['მაგას შენ ვერიზამ', 'მაგაზე ელიტას მიმართე',
+                          'კიდე რაგინდა?', 'ძაან ხოარ გაიჯვი?',
+                          'ადმინი არ ხარ', 'არ გაქ უფლება', 'ადმინ... უთხარი რა ამას რამე'
+                          'მენეჯერს მიმართე', 'менеджери садаа?']
 
 # analyze text content and return transliteration if conditions met
 def analyze(arg) -> str | None:
@@ -64,18 +84,18 @@ async def on_ready():
 
 @bot.command()
 async def ping(ctx):
-    ping_random_reply_list: list[str] = ["ჰოუ", "რაა", "რაია",
-                                         "რაო", "ხო რაარი", "რახდება",
-                                         "ჰოოოო", "რაგინდაააა რააა"]
     reply = random.choice(ping_random_reply_list)
     await ctx.reply(f'{reply}?', mention_author=False) #, mention_author=False
 
 #this used to be $ჩატ command
-@bot.command()
+@bot.command(aliases=['ჩატ'])
 async def chat(ctx):
     content = ctx.message.content.strip()
-    #argument = content[len('$ჩატ'):].strip()
-    argument = content[len('$chat'):].strip()
+
+    if content.startswith('$ჩატ'):
+        argument = content[len('$ჩატ'):].strip()
+    else:
+        argument = content[len('$chat'):].strip()
 
     if not argument:
         await ctx.reply("რა გინდა ძმა? რა ვერ დალაგდი? აი ესე უნდა -> `$chat <მესიჯი>`",mention_author=False)
@@ -90,7 +110,7 @@ async def chat(ctx):
             passive_context=passive_context if passive_context else None)
 
     await ctx.reply(reply, mention_author=False)
-    return
+
 
 @bot.command()
 @commands.has_permissions(administrator=True)
@@ -104,8 +124,7 @@ async def stock(ctx, ticker: str = None, period: str = DEFAULT_PERIOD):
     # Fetch a stock or crypto snapshot and post a chart + stats embed.
     # Usage: $stock <ticker|name> [1d|1m|1y|5y]
     # Examples: $stock apple 1y  |  $stock bitcoin  |  $stock NVDA 1m
-    stock_not_found_list = ['ეგეთი მონაცემები ვერსად ვერ ვნახე', 'ეგ რაარი? არსად არაა',
-                      'ვინა, სადა?', 'ვიის?', 'არ მაქ მაგის მონაცემები',]
+
     stock_random_reply = random.choice(stock_not_found_list)
     if ticker is None:
         await ctx.reply("გამოყენება: `$stock <ticker or name> [1d|1m|1y|5y]`\nმაგალითად: `$stock apple 1y` | `$stock bitcoin` | `$stock NVDA 1m | $stock SNDK 1y`\n1d ოფშენი, default flag-ია", mention_author=False)
@@ -126,6 +145,84 @@ async def stock(ctx, ticker: str = None, period: str = DEFAULT_PERIOD):
         return
 
     await ctx.reply(file=chart_file, embed=embed, mention_author=False)
+
+
+@bot.command()
+async def pip(ctx, action: str = None, target: str = None):
+    usage = (
+        "გამოყენება:\n"
+        "`$pip install <package>`\n"
+        "`$pip uninstall <package>`\n"
+        "`$pip list`\n"
+        "`$pip freeze @user`\n"
+        "`$pip unfreeze @user`"
+    )
+
+    if action is None:
+        await ctx.reply(usage, mention_author=False)
+        return
+
+    action = action.lower()
+
+    if action == "install":
+        if target is None:
+            await ctx.reply("package name სადაა ძმა? `$pip install <package>`", mention_author=False)
+            return
+
+        if is_numpy_package(target):
+            await ctx.reply(random_numpy_reply(), mention_author=False)
+            return
+
+        async with ctx.channel.typing():
+            response = await install_package(target)
+        await ctx.reply(response.content, embed=response.embed, mention_author=False)
+        return
+
+    if action == "uninstall":
+        if target is None:
+            await ctx.reply("package name სადაა ძმა? `$pip uninstall <package>`", mention_author=False)
+            return
+
+        response = uninstall_package(target)
+        await ctx.reply(response.content, embed=response.embed, mention_author=False)
+        return
+
+    if action == "list":
+        await ctx.reply(embed=build_package_list_embed(), mention_author=False)
+        return
+
+    if action in ("freeze", "unfreeze"):
+        if not ctx.author.guild_permissions.administrator:
+            await ctx.reply("მაგას ადმინი უნდა.", mention_author=False)
+            return
+
+        if not ctx.message.mentions:
+            await ctx.reply(f"ჰა ვისააქ ხმა ჩასაგდები? `$pip {action} @user`", mention_author=False)
+            return
+
+        member = ctx.message.mentions[0]
+
+        try:
+            if action == "freeze":
+                await member.timeout(timedelta(hours=1), reason=f"$pip freeze by {ctx.author}")
+                await ctx.reply(
+                    f"მიიწუწეეეეეე! {member.mention}", # freeze action
+                    mention_author=False
+                )
+            else:
+                await member.timeout(None, reason=f"$pip unfreeze by {ctx.author}")
+                await ctx.reply(
+                    f"ხო კაი ნუ ტირი {member.mention}", # unfreeze action
+                    mention_author=False
+                )
+        except discord.Forbidden:
+            await ctx.reply("მაგას ვერაფერს ვერ ვუზავ, permission არ მყოფნის.", mention_author=False)
+        except discord.HTTPException:
+            await ctx.reply("Discord-მა აურია გამიფუჭა ჭაჭიპიტი, ახლიდან ცადე.", mention_author=False)
+        return
+
+    await ctx.reply(usage, mention_author=False)
+
 
 # League of Legends Command
 @bot.command()
@@ -236,15 +333,17 @@ async def on_message(message):
     if message.author.bot:
         return
 
+    content = message.content.lower()
+
+    if any(word in content for word in megonkalo_trigger_list):
+        await message.reply(random.choice(megonkalo_random_reply_list), mention_author=False)
+
     await bot.process_commands(message)
 
 @bot.event
 async def on_command_error(ctx, err):
     # ERROR variables:
-    missing_permission_reply_list = ['მაგას შენ ვერიზამ', 'მაგაზე ელიტას მიმართე',
-                          'კიდე რაგინდა?', 'ძაან ხოარ გაიჯვი?',
-                          'ადმინი არ ხარ', 'არ გაქ უფლება', 'ადმინ... უთხარი რა ამას რამე'
-                          'მენეჯერს მიმართე', 'менеджери садаа?']
+
     missing_permission_reply = random.choice(missing_permission_reply_list)
 
     if isinstance(err, commands.CommandNotFound):
