@@ -25,23 +25,221 @@ MY_GUILD = discord.Object(id=os.getenv('MY_GUILD_ID'))
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='$', intents=intents, help_command=None)
+HELP_COMMANDS = {
+    "help": {
+        "usage": "$help [command]",
+        "description": "Shows all bot commands, or details for specified command.",
+        "details": "Use when you forget a command or want to see the flags for one specific command.",
+        "flags": {
+            "$help": "Shows the short overview for every command.",
+            "$help <command>": "Shows detailed help for one command. (don't use $ before the command)",
+        },
+        "examples": ["$help", "$help stock", "$help pip"],
+        "aliases": [],
+        "admin": False,
+    },
+    "ping": {
+        "usage": "$ping",
+        "description": "Checks if the bot is online",
+        "details": "A check command. If the bot replies, it is online and processing commands.",
+        "examples": ["$ping"],
+        "aliases": [],
+        "admin": False,
+    },
+    "chat": {
+        "usage": "$chat <message> / $ჩატ <message>",
+        "description": "AI chatbot feature. talks to the AI model using your message and channel context.",
+        "details": (
+            "Get a reply from and AI agent. It understands context and is a friend"
+            "Georgian, English, English-Georgian transliteration is also supported."
+        ),
+        "examples": ["$chat რა ხდება?", "$ჩატ explain this code", "$chat ra xdeba ak?"],
+        "aliases": ["ჩატ"],
+        "admin": False,
+    },
+    "reset": {
+        "usage": "$reset",
+        "description": "Clears this channel's AI conversation/context history.",
+        "details": (
+            "Admin-only command. It clears the stored AI chat history for the current channel only."
+        ),
+        "examples": ["$reset"],
+        "aliases": [],
+        "admin": True,
+    },
+    "stock": {
+        "usage": "$stock <ticker|stock-name> [1d|1m|1y|5y]",
+        "description": "fetch a stock or crypto chart and render it with basic info.",
+        "details": (
+            "Fetches market data, renders a chart, and sends an embed. Common names like "
+            "`apple` or `bitcoin` work, and raw tickers objects like `NVDA` or `SNDK` work too."
+        ),
+        "flags": {
+            "1d": "One-day chart. (default period)",
+            "1m": "One-month chart.",
+            "1y": "One-year chart.",
+            "5y": "Five-year chart.",
+        },
+        "examples": ["$stock apple", "$stock bitcoin 1m", "$stock NVDA 1y", "$stock SNDK 1y"],
+        "aliases": [],
+        "admin": False,
+    },
+    "pip": {
+        "usage": "$pip install|uninstall|list|freeze|unfreeze",
+        "description": "Python Package manager commands, plus admin-only - freeze/unfreeze.",
+        "details": (
+            "A fake server package manager. Installs are simulated, package infos are fetched from PyPI, "
+            "and the installed package list is saved locally."
+        ),
+        "flags": {
+            "install <package>": "Fetches PyPI info,Simulates install process, and adds it to the list.",
+            "uninstall <package>": "Simulates uninstall process and removes it from the list.",
+            "list": "Lists the installed packages.",
+            "freeze @user": "Admin-only. Times out the mentioned user for 1 hour.",
+            "unfreeze @user": "Admin-only. Removes the timeout for the mentioned user.",
+        },
+        "examples": ["$pip install requests", "$pip list", "$pip freeze @user"],
+        "aliases": [],
+        "admin": False,
+    },
+    "arenaroll": {
+        "usage": "$arenaroll v2|v3",
+        "description": "Rolls random League of Legends champions for Arena mode.",
+        "details": "Randomly picks champions for Arena with specified game mode.",
+        "flags": {
+            "v2": "Rolls 2 champions for 2v2 Arena.",
+            "v3": "Rolls 3 champions for 3v3 Arena.",
+        },
+        "examples": ["$arenaroll v2", "$arenaroll v3"],
+        "aliases": [],
+        "admin": False,
+    },
+    "flexroll": {
+        "usage": "$flexroll -champs|-roles|-mix [@p1 @p2 @p3 @p4 @p5]",
+        "description": "Rolls random champions for each role, assigns random roles (1 each), or both.",
+        "details": (
+            "Flex queue helper. For role-based rolls it uses exactly 5 manual mentions, or exactly "
+            "5 non-bot users from your current voice channel."
+        ),
+        "flags": {
+            "-champs": "Rolls ONE different champion for EACH role.",
+            "-roles": "Assigns 5 players to top, jungle, mid, bot, and support randomly.",
+            "-mix": "Assigns roles and champs for each assigned role.",
+            "@mentions": "Optional manual player list for `-roles` and `-mix`; must be exactly 5 users.",
+        },
+        "examples": [
+            "$flexroll -champs",
+            "$flexroll -roles",
+            "$flexroll -mix @p1 @p2 @p3 @p4 @p5",
+        ],
+        "aliases": [],
+        "admin": False,
+    },
+}
 analyzer = TextAnalyzer()
 
 # conversation variables:
 PASSIVE_CONTEXT_LIMIT = 10
-megonkalo_trigger_list = ['megonka', 'megonkalo', 'gonka', 'gonkalo','megonkaloze','megonkaze','megonkalos',
+megonkalo_trigger_list: list[str] = ['megonka', 'megonkalo', 'gonka', 'gonkalo','megonkaloze','megonkaze','megonkalos',
                           'მეგონკა', 'მეგონკალო', 'გონკა', 'გონკალო', 'მეგონკალოზე', 'მეგონკაზე', 'მეგონკალოს']
-megonkalo_random_reply_list = ["94", "94ით მოფრინავს", "ჩვენი ძმა მეგონკა", "გიო wowი არ ვიყომაროთ?",
+megonkalo_random_reply_list: list[str] = ["94", "94ით მოფრინავს", "ჩვენი ძმა მეგონკა", "გიო wowი არ ვიყომაროთ?",
                                "ეგ ვისი ძმაკაცია?", "დაურეკეთ მეგონკას ჩვენ ძმას", "94ჯერ ვითამაშე wow დღეს", "ბანჯოლას ძმაკაცი ვინახსენა?"]
 ping_random_reply_list: list[str] = ["ჰოუ", "რაა", "რაია",
                                     "რაო", "ხო რაარი", "რახდება",
                                      "ჰოოოო", "რაგინდაააა რააა"]
-stock_not_found_list = ['ეგეთი მონაცემები ვერსად ვერ ვნახე', 'ეგ რაარი? არსად არაა',
+stock_not_found_list: list[str] = ['ეგეთი მონაცემები ვერსად ვერ ვნახე', 'ეგ რაარი? არსად არაა',
                       'ვინა, სადა?', 'ვიის?', 'არ მაქ მაგის მონაცემები']
-missing_permission_reply_list = ['მაგას შენ ვერიზამ', 'მაგაზე ელიტას მიმართე',
+missing_permission_reply_list: list[str] = ['მაგას შენ ვერიზამ', 'მაგაზე ელიტას მიმართე',
                           'კიდე რაგინდა?', 'ძაან ხოარ გაიჯვი?',
                           'ადმინი არ ხარ', 'არ გაქ უფლება', 'ადმინ... უთხარი რა ამას რამე'
                           'მენეჯერს მიმართე', 'менеджери садаа?']
+
+# Custom Help Class with a description for each command
+class CustomHelpCommand(commands.HelpCommand):
+    async def send_bot_help(self, mapping):
+        embed = discord.Embed(
+            title="Bot Commands",
+            description="Use `$help <command>` for more details.",
+            color=0x5865F2,
+        )
+
+        for command_name, metadata in HELP_COMMANDS.items():
+            command = self.context.bot.get_command(command_name)
+            if command is None and command_name != "help":
+                continue
+
+            label = f"${command_name}"
+            if metadata["admin"]:
+                label += " (admin)"
+
+            aliases = metadata["aliases"]
+            alias_text = f"\nAliases: {', '.join(f'${alias}' for alias in aliases)}" if aliases else ""
+            embed.add_field(
+                name=label,
+                value=f"{metadata['description']}\nUsage: `{metadata['usage']}`{alias_text}",
+                inline=False,
+            )
+
+        await self.context.reply(embed=embed, mention_author=False)
+
+    async def send_command_help(self, command):
+        metadata = HELP_COMMANDS.get(command.name)
+        if metadata is None:
+            await self.context.reply("მაგ command-ზე help არ მაქვს.", mention_author=False)
+            return
+
+        title = f"Help: ${command.name}"
+        if metadata["admin"]:
+            title += " (admin)"
+
+        embed = discord.Embed(
+            title=title,
+            description=metadata.get("details", metadata["description"]),
+            color=0x57F287,
+        )
+        embed.add_field(name="Usage", value=f"`{metadata['usage']}`", inline=False)
+
+        flags = metadata.get("flags")
+        if flags:
+            flag_lines = [f"`{name}` - {description}" for name, description in flags.items()]
+            embed.add_field(
+                name="Flags / Options",
+                value="\n".join(flag_lines),
+                inline=False,
+            )
+
+        examples = metadata.get("examples")
+        if examples:
+            embed.add_field(
+                name="Examples",
+                value="\n".join(f"`{example}`" for example in examples),
+                inline=False,
+            )
+
+        aliases = metadata["aliases"]
+        if aliases:
+            embed.add_field(
+                name="Aliases",
+                value=", ".join(f"`${alias}`" for alias in aliases),
+                inline=False,
+            )
+
+        await self.context.reply(embed=embed, mention_author=False)
+
+    async def send_cog_help(self, cog):
+        await self.send_bot_help({})
+
+    async def send_group_help(self, group):
+        await self.send_command_help(group)
+
+    def command_not_found(self, string):
+        return f"`{string}` ეგ command ვერ ვნახე ან `$`-ის გარეშე დაწერე"
+
+    async def send_error_message(self, error):
+        await self.context.reply(error, mention_author=False)
+
+
+bot.help_command = CustomHelpCommand()
 
 # analyze text content and return transliteration if conditions met
 def analyze(arg) -> str | None:
@@ -98,7 +296,7 @@ async def chat(ctx):
         argument = content[len('$chat'):].strip()
 
     if not argument:
-        await ctx.reply("რა გინდა ძმა? რა ვერ დალაგდი? აი ესე უნდა -> `$chat <მესიჯი>`",mention_author=False)
+        await ctx.reply("რა გინდა ძმა? რა ვერ დალაგდი? აი ესე უნდა -> `$chat ან $ჩატ <მესიჯი>`",mention_author=False)
         return
 
     async with ctx.channel.typing():
