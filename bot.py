@@ -157,6 +157,7 @@ missing_permission_reply_list: list[str] = ['მაგას შენ ვერ
                           'კიდე რაგინდა?', 'ძაან ხოარ გაიჯვი?',
                           'ადმინი არ ხარ', 'არ გაქ უფლება', 'ადმინ... უთხარი რა ამას რამე'
                           'მენეჯერს მიმართე', 'менеджери садаа?']
+TEXAVS_GENERAL_ID = 1373585389897515052
 
 # Custom Help Class with a description for each command
 class CustomHelpCommand(commands.HelpCommand):
@@ -367,11 +368,17 @@ def _get_welcome_channel(guild: discord.Guild) -> discord.TextChannel | None:
     return None
 
 
-# check bot state by pinging (online/offline)
 @bot.event
 async def on_ready():
     print(f"We have logged in as {bot.user}")
-    print(f'Bot Ready!')
+
+    channel = bot.get_channel(TEXAVS_GENERAL_ID)
+
+    if channel:
+        await channel.send("Bot Online")
+        print(f"Bot Ready!")
+    else:
+        print(f"Couldn't find a channel in {TEXAVS_GENERAL_ID}")
 
 
 @bot.event
@@ -387,7 +394,7 @@ async def on_guild_join(guild):
         allowed_mentions=discord.AllowedMentions(everyone=True),
     )
 
-
+# check bot state by pinging (online/offline)
 @bot.command()
 async def ping(ctx):
     reply = random.choice(ping_random_reply_list)
@@ -427,7 +434,6 @@ async def chat(ctx):
 
 
 @bot.command()
-@commands.has_permissions(administrator=True)
 async def reset(ctx):
     clear_history(ctx.channel.id)
     await ctx.send("ამ ჩანელის ჩატ-ჰისთორი/კონტექსტი წაიშალა.")
